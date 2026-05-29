@@ -216,7 +216,7 @@ Open [http://localhost:5173](http://localhost:5173) to view your floor plan. Pre
 
 #### Step 3: Deploy to Vercel
 
-[![Deploy with Vercel](https://img.shields.io/badge/Deploy_with_Vercel-2563EB?style=for-the-badge&logo=vercel&logoColor=white)](https://vercel.com/new/clone?demo-title=2D%2F3D%20Floor%20Planner&demo-description=A%20best-in-class%20TypeScript%20boilerplate%20for%20designing%20interior%20floor%20plans%20with%20matched%202D%20and%203D%20views%2C%20built%20on%20React%2C%20Three.js%2C%20Zustand%2C%20and%20Zod.&demo-url=https%3A%2F%2F2d-3d-floor-planner.vercel.app&demo-image=https%3A%2F%2F2d-3d-floor-planner.vercel.app%2Fscreenshot.jpg&from=templates&project-name=2d-3d-floor-planner&repository-name=2d-3d-floor-planner&repository-url=https%3A%2F%2Fgithub.com%2Fgallop-software%2F2d-3d-floor-planner)
+[![Deploy with Vercel](https://img.shields.io/badge/Deploy_with_Vercel-2563EB?style=for-the-badge&logo=vercel&logoColor=white)](https://vercel.com/new/clone?demo-title=2D%2F3D%20Floor%20Planner&demo-description=A%20best-in-class%20TypeScript%20boilerplate%20for%20designing%20interior%20floor%20plans%20with%20matched%202D%20and%203D%20views%2C%20built%20on%20React%2C%20Three.js%2C%20Zustand%2C%20and%20Zod.&demo-url=https%3A%2F%2F2d-3d-floor-planner.gallop.software&demo-image=https%3A%2F%2F2d-3d-floor-planner.gallop.software%2Fscreenshot.jpg&from=templates&project-name=2d-3d-floor-planner&repository-name=2d-3d-floor-planner&repository-url=https%3A%2F%2Fgithub.com%2Fgallop-software%2F2d-3d-floor-planner)
 
 Select your repository, and Vercel will automatically deploy whenever you push changes.
 
