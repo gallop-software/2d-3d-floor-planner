@@ -322,7 +322,7 @@ The [team](https://webplant.media) behind Gallop has decades of combined experie
 
 ## Technologies
 
-### Runtime
+### Frontend (Runtime)
 
 Every dependency is battle-tested in production and chosen for stability, performance, and long-term maintainability.
 
