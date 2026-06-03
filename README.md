@@ -1,12 +1,12 @@
 # 2D/3D Floor Planner
 
-[![2D/3D Floor Planner](public/screenshot.jpg)](https://2d-3d-floor-planner.gallop.software)
+[![2D/3D Floor Planner](public/images/screenshot.jpg)](https://2d-3d-floor-planner.gallop.software)
 
 A best-in-class TypeScript boilerplate for designing interior floor plans with **matched 2D and 3D views** of the same scene — built on React, Three.js, Zustand, and Zod — so you can build at the speed of thought with AI, ship an accurate planner, and rank #1 on Google.
 
 **⚡ Demo:** [2d-3d-floor-planner.gallop.software](https://2d-3d-floor-planner.gallop.software)
 **🎨 Template:** [gallop.software/templates](https://gallop.software/templates)
-**📦 Repository:** [github.com/gallop-software/2d-3d-floor-planner](https://github.com/gallop-software/2d-3d-floor-planner-pro)
+**📦 Repository:** [github.com/gallop-software/2d-3d-floor-planner-pro](https://github.com/gallop-software/2d-3d-floor-planner-pro)
 **🏷️ Category:** 2D/3D Floor Planner Boilerplate
 
 ---
