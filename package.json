@@ -1,13 +1,14 @@
 {
   "name": "2d-3d-floor-planner",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc -b --noEmit"
+    "typecheck": "tsc -b --noEmit",
+    "audit:gcode": "esbuild cad/audit.ts --bundle --format=esm --outfile=node_modules/.cache/gcode-audit.mjs --log-level=error && node node_modules/.cache/gcode-audit.mjs"
   },
   "dependencies": {
     "@react-three/drei": "^9.114.0",

@@ -1,0 +1,57 @@
+:root {
+  --bg:#1e2227; --panel:#262b32; --line:#3a414a;
+  --txt:#d7dde3; --muted:#8b95a1; --accent:#4ea1ff;
+}
+* { box-sizing:border-box; }
+html,body { margin:0; height:100%; font-family:-apple-system,Segoe UI,Roboto,sans-serif; color:var(--txt); background:var(--bg); overscroll-behavior:none; -webkit-tap-highlight-color:transparent; }
+#app { display:flex; flex-direction:column; height:100vh; height:100dvh; }
+header { display:flex; align-items:center; gap:12px; padding:8px 14px; background:var(--panel); border-bottom:1px solid var(--line); flex-wrap:nowrap; white-space:nowrap; overflow-x:auto; scrollbar-width:none; }
+header::-webkit-scrollbar { display:none; }
+header > * { flex-shrink:0; }
+header h1 { font-size:14px; font-weight:600; margin:0 8px 0 0; }
+.btn { background:#323841; color:var(--txt); border:1px solid var(--line); border-radius:6px; padding:6px 10px; font-size:0.875rem; cursor:pointer; }
+.btn:hover { border-color:var(--accent); }
+.btn.icon { display:flex; align-items:center; justify-content:center; padding:6px; width:38px; height:38px; }
+.btn.dl { display:flex; align-items:center; gap:6px; }
+.btn.dl[hidden] { display:none; }
+.btn.info { display:flex; align-items:center; justify-content:center; padding:7px 8px; } /* same 30px height as the other toolbar buttons */
+.btn.icon svg { width:24px; height:24px; }
+.menu { position:relative; }
+.menu-list { position:fixed; z-index:1000; min-width:180px; background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:4px; box-shadow:0 8px 24px rgba(0,0,0,.4); }
+.menu-list a { display:block; padding:8px 10px; border-radius:6px; font-size:13px; color:var(--muted); text-decoration:none; }
+.menu-list a:hover { background:#323841; color:var(--txt); }
+.menu-list a.current { color:var(--txt); font-weight:600; }
+.page-nav { display:flex; align-items:center; gap:6px; font-size:0.875rem; color:var(--muted); }
+select { background:#323841; color:var(--txt); border:1px solid var(--line); border-radius:6px; padding:5px 8px; font-family:inherit; font-size:0.875rem; }
+.spacer { flex:1; }
+#legend { display:flex; gap:18px; font-size:0.875rem; color:var(--muted); }
+#legend label { display:flex; align-items:center; gap:8px; cursor:pointer; }
+#legend input[type=checkbox] { width:20px; height:20px; cursor:pointer; } /* accent-color set per layer */
+#wrap { position:relative; flex:1; overflow:hidden; }
+canvas { display:block; width:100%; height:100%; touch-action:none; }
+#readout { position:absolute; left:10px; bottom:10px; font-size:11px; color:var(--muted); background:rgba(20,22,26,.7); padding:4px 8px; border-radius:5px; pointer-events:none; }
+#drop { position:absolute; inset:0; z-index:10; display:none; align-items:center; justify-content:center; background:rgba(78,161,255,.12); border:2px dashed var(--accent); font-size:18px; }
+#drop.on { display:flex; }
+#status { font-size:0.875rem; color:var(--muted); } /* errors only — sheet info lives on the info button */
+.info-pop { position:fixed; z-index:1000; max-width:340px; background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:8px 12px; font-size:0.8125rem; line-height:1.5; color:var(--txt); box-shadow:0 8px 24px rgba(0,0,0,.4); }
+
+/* ---- 3D cabinet drawing (each cabinet's "3D" sheet) ---- */
+/* explode slider floats bottom-right of the canvas, above the 3D view */
+.explode { position:absolute; right:12px; bottom:12px; z-index:5; display:flex; align-items:center; gap:8px; font-size:0.8125rem; color:var(--muted); background:rgba(20,22,26,.75); padding:6px 12px; border-radius:8px; }
+.explode[hidden] { display:none; }
+.explode input { width:130px; accent-color:var(--accent); }
+/* small tablets + phones: keep it visible, centered along the bottom */
+@media (max-width: 768px) { .explode { right:auto; left:50%; transform:translateX(-50%); } }
+.view3d { position:absolute; inset:0; display:none; background:#fff; }
+.view3d.on { display:block; }
+.view3d canvas { touch-action:none; }
+.labels2d { position:absolute; inset:0; overflow:hidden; pointer-events:none; }
+.part-label { font:600 10px/1.4 -apple-system,Segoe UI,Roboto,sans-serif; letter-spacing:.02em; color:#273140; background:rgba(255,255,255,.88); border:1px solid #c8d0da; border-radius:4px; padding:1px 5px; white-space:nowrap; }
+.dim-label { font:600 11px/1.3 -apple-system,Segoe UI,Roboto,sans-serif; color:#37404d; background:rgba(255,255,255,.92); border-radius:3px; padding:0 4px; white-space:nowrap; }
+
+/* ---- Excel-style sheet tabs (3D, Board 1, Board 2, ...) ---- */
+#tabs { display:flex; gap:4px; padding:5px 10px 7px; background:var(--panel); border-top:1px solid var(--line); overflow-x:auto; scrollbar-width:none; }
+#tabs::-webkit-scrollbar { display:none; }
+#tabs button { background:transparent; color:var(--muted); border:1px solid transparent; border-radius:0 0 8px 8px; padding:5px 14px; font-size:0.875rem; font-family:inherit; cursor:pointer; white-space:nowrap; }
+#tabs button:hover { color:var(--txt); background:#2b313a; }
+#tabs button.active { background:#323841; color:var(--txt); border-color:var(--accent); }

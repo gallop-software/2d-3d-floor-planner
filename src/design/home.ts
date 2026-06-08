@@ -71,12 +71,12 @@ const northBase = run({ idPrefix: 'f_nb', along: 'x', start: 217, dir: -1, band:
   .add('Sink 36"', 36)
   .add('DW 24"', 24, { color: APPLIANCE })
   .add('B24', 24)
-  .add('B24', 24);
+  .add('B23', 23);
 
 // North wall upper run, west from the corner upper's west edge (x=229):
 const northUpper = run({ idPrefix: 'f_nu', along: 'x', start: 229, dir: -1, band: NORTH_UP, z: UP, color: UPPER })
   .add('Upper 18"', 18)
-  .gap(48) // over the sink + window
+  .gap(47) // over the sink + window
   .add('Upper 33"', 33)
   .add('Upper 33"', 33);
 
@@ -163,8 +163,9 @@ export const home = scene({
     box('f_s_fridge', 'Fridge', { x: [173.75, 205], y: [173, 201], z: [0, 69] }, APPLIANCE),
     box('f_s_fridge_2', 'Fridge', { x: [142.25, 173.5], y: [173, 201], z: [0, 69] }, APPLIANCE),
 
-    // Island — two base cabinets, 4' south of the north run (y 72..96).
-    box('f_island_w', 'Island 30"', { x: [102.5, 132.5], y: [72, 96], z: BASE }, CABINET),
-    box('f_island_e', 'Island 18"', { x: [132.5, 150.5], y: [72, 96], z: BASE }, CABINET),
+    // Island — two base cabinets, rotated 90° CCW; 4' aisle off both the
+    // north run (y=24) and the east run face (x=229).
+    box('f_island_n', 'Island 18"', { x: [157, 181], y: [72, 90], z: BASE }, CABINET),
+    box('f_island_s', 'Island 30"', { x: [157, 181], y: [90, 120], z: BASE }, CABINET),
   ],
 });

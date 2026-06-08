@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ViewModeToggle } from './ViewModeToggle';
 import { UnitsToggle } from './UnitsToggle';
+import { PageMenu } from './PageMenu';
 
 const EDGE = 28; // px width of the fade at a scrollable edge
 
@@ -47,6 +48,7 @@ export function Toolbar() {
         className="no-scrollbar flex items-center gap-3 overflow-x-auto whitespace-nowrap px-3 py-2 sm:px-4"
         style={mask ? { WebkitMaskImage: mask, maskImage: mask } : undefined}
       >
+        <PageMenu />
         <div className="shrink-0 whitespace-nowrap text-sm font-semibold text-stone-900">2D/3D Floor Planner</div>
         <div className="mx-1 h-5 w-px shrink-0 bg-stone-300" />
         <ViewModeToggle />

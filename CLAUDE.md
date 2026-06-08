@@ -52,10 +52,33 @@ blue and a tooltip shows label + dimensions (fixtures W×D×H; rooms W×D + area
 openings W×H). Clicking empty space clears the selection. Tooltip text + the highlight color live in
 `src/scene/describe.ts`; this is automatic for any element you add.
 
+## Second page: Cabinet CAD (`cad/`)
+
+A standalone page at **`/cad/`** (its own `cad/index.html`, vanilla TS + three.js — no React) that
+takes a single cabinet from definition → shop. The toolbar's page menu (`src/ui/PageMenu.tsx`) links
+the two pages; `vite.config.ts` lists both `index.html` files as build inputs. This is **separate**
+from the floor planner — it does not read `home.ts` or the scene engine.
+
+**The one rule here: a cabinet is defined once in `cad/cabinets/*.ts`.** From that single source of
+truth the page derives everything; don't hand-edit downstream output:
+
+- `cad/model.ts` — `Cabinet` types + DXF generation; owns CNC constants (bit dia, bleed, gap).
+- `cad/view3d.ts` — three.js 3D drawing (assembled boxes, explode slider, dimension callouts, layers).
+- `cad/gcode.ts` — CAM: GRBL G-code per board (pockets first, then profiles with holding tabs).
+- `cad/surfacing.ts` — a standalone wasteboard-surfacing G-code program (not a cabinet).
+- `cad/main.ts` — page wiring (canvas, sheet picker, DXF/G-code downloads, drag-to-load `.dxf`).
+- `cad/audit.ts` — machine-safety + dimensional checks for every generated job.
+
+Worked examples: `upper18` (CNC face-frame upper, 48×48 boards) and `upper18saw` (same cabinet as
+straight saw cuts, 4×8 sheets). To add a cabinet, write a new `cad/cabinets/*.ts` and register it in
+`cad/main.ts`. Target machine for the output is a BobsCNC KL744 with a 1/4" bit; DXF holds true
+finished outlines (let CAM apply the bit offset). **Always run `npm run audit:gcode` after CAD edits.**
+
 ## Guardrails / commands
 
 Types + Zod are the safety net. After any edit:
 
 - `npx tsc -b --noEmit` — type-check (run this every time).
-- `npm run dev` — dev server with HMR.
-- `npm run build` — production build.
+- `npm run dev` — dev server with HMR (Floor Plan at `/`, Cabinet CAD at `/cad/`).
+- `npm run build` — production build (bundles both pages).
+- `npm run audit:gcode` — machine-safety + dimensional audit of all CNC G-code (run after CAD edits).

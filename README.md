@@ -22,6 +22,8 @@ Just chat with AI inside your code editor using our Gallop templates, and you wi
 ## Features
 
 - 🧱 **One typed scene, two views** — a single source-of-truth JSON scene drives both the 2D plan and the 3D model, so they can never drift
+- 🪚 **Cabinet CAD → CNC cut files** — a standalone `/cad/` workspace turns one typed cabinet definition into a 3D drawing, CNC-ready **DXF** cut sheets, and GRBL **G-code** for every board, all derived from the same data
+- 🧭 **Multi-page app** — a built-in page menu hops between the Floor Plan and the Cabinet CAD workspace; Vite bundles both pages in one build
 - 📐 **Precise dimensions** — all linear values stored in inches; imperial (`ft / in`) display by default with an `in` toggle
 - ⚛️ **React 18 + TypeScript** with strict typing end-to-end
 - 🧊 **Three.js** via `@react-three/fiber` + `@react-three/drei` for the 3D view
@@ -34,6 +36,22 @@ Just chat with AI inside your code editor using our Gallop templates, and you wi
 - 🔍 **SEO and AI optimized** with meta tags, Open Graph, and Twitter cards
 - ⚡ **Vite** for instant hot reload and lightning-fast production builds
 - 🏠 **Starter home** included so the project runs out of the box
+
+---
+
+## Cabinet CAD — From Definition to CNC Cut Files
+
+Beyond the floor planner, the template ships a second, standalone page at **`/cad/`** for taking a single cabinet all the way to the shop. Open it from the page menu in the top-left of the toolbar (or visit `http://localhost:5173/cad/` directly).
+
+Each cabinet is described **once** as a typed definition (`cad/cabinets/*.ts`). From that one source of truth the page generates:
+
+- 🧊 **A 3D drawing** — every part rendered as its assembled box, with an explode slider, dimension callouts, per-part cut sizes, and a toggleable layer/legend.
+- 📄 **DXF cut sheets** — true finished part outlines nested onto each board (one per material thickness), ready to import into your CAM software. Drag a `.dxf` back onto the canvas to inspect it.
+- ⚙️ **GRBL G-code** — ready-to-run toolpaths per board for a BobsCNC KL744 (1/4" bit): pockets first while parts are still captive, then outside profiles with holding tabs. Includes a separate wasteboard-surfacing program.
+
+Two build variants ship as worked examples — `upper18` (CNC face-frame upper on 48×48 boards) and `upper18saw` (the same cabinet as straight saw cuts on 4×8 sheets).
+
+**Machine-safety audit:** because bad G-code breaks bits and gouges stock, every generated job is checked by `npm run audit:gcode` — it flags un-parseable lines, plunges into stock, travel below safe height, cuts deeper than the material, out-of-bounds moves, and more, and confirms every toolpath lands exactly on the 3D plan.
 
 ---
 
@@ -290,16 +308,29 @@ The [team](https://webplant.media) behind Gallop has decades of combined experie
 │   │       ├── Floor3D.tsx    # Room floor polygon
 │   │       └── Fixture3D.tsx  # Box / cylinder / prism cabinets & appliances
 │   ├── ui/                    # Toolbar chrome
-│   │   ├── Toolbar.tsx        # Top bar (brand + toggles)
+│   │   ├── Toolbar.tsx        # Top bar (page menu + brand + toggles)
+│   │   ├── PageMenu.tsx       # Dropdown to switch between Floor Plan and Cabinet CAD pages
 │   │   ├── ViewModeToggle.tsx # 2D Plan / 3D View / Split
 │   │   ├── UnitsToggle.tsx    # ft / in  ·  in
 │   │   └── ZoomControls.tsx   # Shared +/- zoom buttons
 │   └── styles/
 │       └── index.css          # Tailwind entry + global styles
+├── cad/                       # Standalone Cabinet CAD page (/cad/) — 3D + DXF + G-code
+│   ├── index.html             # SEO-rich HTML shell for the CAD page
+│   ├── main.ts                # CAD app entry — canvas, sheets, downloads, page menu
+│   ├── model.ts               # Cabinet definition types + DXF generation (single source of truth)
+│   ├── view3d.ts              # Three.js 3D drawing of a cabinet (explode, callouts, layers)
+│   ├── gcode.ts               # CAM — generates GRBL G-code per board from the cabinet
+│   ├── surfacing.ts           # Wasteboard-surfacing G-code program
+│   ├── audit.ts               # Machine-safety + dimensional audit of every G-code job
+│   ├── viewer.css             # Styling for the CAD page
+│   └── cabinets/              # Cabinet definitions (edit / add your own)
+│       ├── upper18.ts         # CNC face-frame upper (48×48 boards)
+│       └── upper18saw.ts      # Circular-saw build of the same cabinet (4×8 sheets)
 ├── public/
 │   └── screenshot.jpg         # Featured image for OG / template marketplaces
 ├── index.html                 # SEO-rich HTML shell (meta, Open Graph, Twitter cards)
-├── vite.config.ts             # Vite configuration
+├── vite.config.ts             # Vite configuration (multi-page: index.html + cad/index.html)
 ├── tsconfig.json              # TypeScript config (strict)
 ├── tailwind.config.js         # Tailwind CSS configuration
 ├── postcss.config.js          # PostCSS (Tailwind + Autoprefixer)
@@ -313,10 +344,11 @@ The [team](https://webplant.media) behind Gallop has decades of combined experie
 
 ### Development
 
-- **`npm run dev`** — Start development server at http://localhost:5173 with hot reload
-- **`npm run build`** — Type-check, then bundle to `dist/` for production
+- **`npm run dev`** — Start development server at http://localhost:5173 with hot reload (Floor Plan at `/`, Cabinet CAD at `/cad/`)
+- **`npm run build`** — Type-check, then bundle both pages to `dist/` for production
 - **`npm run preview`** — Serve the production build locally for testing
 - **`npm run typecheck`** — TypeScript type checking without emitting
+- **`npm run audit:gcode`** — Machine-safety + dimensional audit of every generated CNC G-code job
 
 ---
 
