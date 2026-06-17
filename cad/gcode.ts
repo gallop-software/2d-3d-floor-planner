@@ -1,29 +1,38 @@
-import { BIT_DIA, cutSize, holeXY, type Cabinet } from "./model";
+import { BIT_DIA, BIT_LABEL, DRILL_DIA, DRILL_LABEL, cutSize, holeXY, type Cabinet } from "./model";
 
-// CAM for the BobsCNC KL744 (GRBL): turns a Cabinet's board nest into
+// CAM for the Shapeoko Pro 5 / Carbide Motion (GRBL): turns a Cabinet's board nest into
 // G-code ready for Universal Gcode Sender. Same single source of truth —
 // toolpaths are derived from the cabinet definition, never hand-edited.
 //
 // Setup assumed by the output:
 //   - units: inches (G20), absolute (G90)
 //   - X0 Y0 at the board's lower-left corner, Z0 at the TOP of the stock
-//   - 1/4" upcut bit; router speed is set by hand on the KL744
+//   - 1/4" upcut bit; 65mm VFD spindle (RPM set by the file's S word)
 //
 // Order of operations per board: POCKETS first (parts still fully captive),
 // then outside PROFILES with holding tabs on the final passes so freed
 // parts can't shift into the bit. Cut the tabs free with a chisel.
 
 export const CAM = {
-  bitDia: BIT_DIA, // 1/4" upcut end mill — ONE tool for everything (model.ts owns the size)
-  // shallow-and-fast: belt-driven machines like the KL744 cut cleanest with
-  // small bites at a brisk feed (the classic hobby-CAM recipe is ~0.03" @ 250)
+  bitDia: BIT_DIA, // 8mm main cutter — profiles + pockets (model.ts owns the size)
+  bitLabel: BIT_LABEL, // "8mm"
+  drillDia: DRILL_DIA, // 1/4" bit, plunge-drills the shelf-pin holes only
+  drillLabel: DRILL_LABEL, // '1/4"'
+  // shallow-and-fast: belt-driven machines like the Shapeoko cut cleanest with
+  // small bites at a brisk feed (these feeds are conservative — the rigid Pro 5
+  // can go faster, but this stays safe across hold-downs and thin offcuts)
   feed: 80, // cutting feed, in/min
   plunge: 20, // plunge feed, in/min
   rapidRate: 150, // only used for the time estimate
   passDepth: 0.05, // depth per pass (3/4" ply = ~15 passes)
-  overcut: 0.02, // cut this far past the material bottom (into the spoilboard)
+  overcut: 0, // real sheet goods run UNDER nominal (3/4" ply is ~23/32", 1/4" is
+  //             ~7/32"), so cutting to the NOMINAL thickness already passes ~1/32"
+  //             past the real bottom — through-cuts go to 0.75"/0.25", not deeper
   stepoverFrac: 0.45, // pocket stepover as a fraction of bit diameter
-  safeZ: 0.75, // ALL travel happens at this height — clears warped stock, chips, clamps
+  safeZ: 1.0, // travel between cuts at this height — clears warped stock, chips
+  //             (1" not 0.75" so the travel height reads distinct from cut depth)
+  retractZ: 3.0, // FULL retract at job start + end (clears clamps, fingers) —
+  //               matches the Shapeoko-style lead-in/out the operator expects
   clearZ: 0.1, // rapid down to here before each plunge (then feed), so the
   //              high travel doesn't cost slow feed-down time
   tabH: 0.12, // holding tab height (left on the final passes)
@@ -45,9 +54,18 @@ const passes = (n: number, caps = false) => `${n} ${caps ? "PASS" : "pass"}${n =
 export function camBoard(cab: Cabinet, boardIdx: number): CamJob {
   const board = cab.boards[boardIdx];
   const parts = cab.parts.filter((p) => p.nest.board === boardIdx);
-  const r = CAM.bitDia / 2;
+  const r = CAM.bitDia / 2; // 8mm main cutter radius (profiles + pockets)
   const step = CAM.bitDia * CAM.stepoverFrac;
-  const maxDepth = Math.max(...parts.map((p) => cutSize(p).thick)) + CAM.overcut;
+  // shelf-pin holes need the 1/4" bit, so a board that has them runs the drill
+  // bit first, then a mid-program tool change to the 8mm cutter
+  const drillParts = parts.filter((p) => p.holes?.length);
+  const hasDrill = drillParts.length > 0;
+  const MAIN = { n: 1, label: CAM.bitLabel };    // 8mm cutter
+  const DRILL = { n: 2, label: CAM.drillLabel }; // 1/4" drill
+  // through-cut depth uses the board's ACTUAL stock thickness when given
+  // (real sheet goods run under nominal), else the modeled part thickness
+  const cutThick = (p: typeof parts[number]) => board.cutThickness ?? cutSize(p).thick;
+  const maxDepth = Math.max(...parts.map(cutThick)) + CAM.overcut;
 
   const lines: string[] = [];
   const segs: ToolpathSeg[] = [];
@@ -88,6 +106,19 @@ export function camBoard(cab: Cabinet, boardIdx: number): CamJob {
   // leave garbage on the line and halt the job. Swap them for brackets.
   const comment = (s: string) => lines.push(`( ${s.replace(/\(/g, "[").replace(/\)/g, "]")} )`);
 
+  // a Shapeoko bit change (same shape as the reference Carbide G-code): lift +
+  // full retract, spindle off, M6 so the operator swaps the bit and the
+  // BitSetter re-probes Z, spindle back on, then dwell to reach speed.
+  const changeBit = (tool: { n: number; label: string }) => {
+    move(true, cur.x, cur.y, CAM.safeZ); // lift clear of the work
+    lines.push(`G0 Z${F(CAM.retractZ)}`); // full retract
+    lines.push("M5"); // spindle off for the swap
+    lines.push(`M6 T${tool.n} ( change to ${tool.label} bit - BitSetter re-sets Z )`);
+    lines.push("M3 S18000 ( VFD spindle - this S word sets the RPM )");
+    lines.push("G4 P3 ( dwell - let the spindle reach speed before cutting )");
+    cur.z = CAM.retractZ;
+  };
+
   // split the total depth into equal passes near CAM.passDepth (a soft
   // target) — avoids a wasted final lap that only removes a few hundredths
   const passDepths = (total: number): number[] => {
@@ -97,16 +128,20 @@ export function camBoard(cab: Cabinet, boardIdx: number): CamJob {
 
   // ---- preamble ---------------------------------------------------------------
   comment(`${cab.name} - ${board.label} - generated from cad/cabinets/${cab.id}.ts`);
-  comment(`BobsCNC KL744 / GRBL - inches - X0 Y0 at board lower-left, Z0 at stock TOP`);
+  comment(`Shapeoko Pro 5 / Carbide Motion (GRBL) - inches - X0 Y0 at board lower-left, Z0 at stock TOP`);
+  comment(`load each bit when prompted - the BitSetter sets Z on every M6 tool change`);
   comment(`standing at the machine front: X+ runs RIGHT, Y+ runs AWAY from you -`);
   comment(`zero on the board corner nearest you on the left; all cuts go up-right`);
-  comment(`bit ${CAM.bitDia}" - feed ${CAM.feed} ipm - plunge ${CAM.plunge} ipm - ~${CAM.passDepth}"/pass target`);
-  comment("toolpaths are PRE-OFFSET for this bit - outside of profiles, inside");
+  comment(hasDrill
+    ? `${CAM.bitLabel} bit: profiles + pockets; ${CAM.drillLabel} bit: shelf-pin holes (bit change mid-program)`
+    : `${CAM.bitLabel} bit: profiles + pockets`);
+  comment(`feed ${CAM.feed} ipm - plunge ${CAM.plunge} ipm - ~${CAM.passDepth}"/pass target`);
+  comment(`toolpaths are PRE-OFFSET for the ${CAM.bitLabel} bit - outside of profiles, inside`);
   comment("of windows/pockets - run as-is, do NOT apply cutter compensation");
   comment(`tabs ${CAM.tabH}" tall x ${CAM.tabL}" long on through cuts - chisel free`);
   // depth summary up front, so the file says what it cuts before it cuts it
   comment("CUT DEPTHS ON THIS BOARD:");
-  for (const t of [...new Set(parts.map((p) => cutSize(p).thick))]) {
+  for (const t of [...new Set(parts.map(cutThick))]) {
     const total = t + CAM.overcut;
     comment(`  PROFILES (${F(t)} stock): through at Z-${F(total)} in ${passes(passDepths(total).length)}`);
   }
@@ -116,13 +151,20 @@ export function camBoard(cab: Cabinet, boardIdx: number): CamJob {
   }
   for (const p of parts) {
     if (!p.holes?.length) continue;
-    comment(`  DRILL (${p.label}): ${p.holes.length} holes ${F(p.holes[0].dia)}" dia x Z-${F(p.holes[0].depth)} - NOT through`);
+    comment(`  DRILL (${p.label}): ${p.holes.length} holes ${F(p.holes[0].dia)}" dia x Z-${F(p.holes[0].depth)} - ${CAM.drillLabel} bit, NOT through`);
   }
-  lines.push("G20 G90 G94", "G17");
-  lines.push("M3 S18000 ( set router speed by hand )");
-  // ALWAYS lift first: the machine's Z is wherever the operator left it
-  // (often Z0, right after touching off) — never start with an XY move
-  lines.push(`G0 Z${F(CAM.safeZ)}`);
+  // Shapeoko / Carbide Motion lead-in (mirrors the Test G-code's start):
+  // select the FIRST tool (the drill bit when this board has shelf-pin holes,
+  // else the main cutter), set modes, run the BitSetter tool change, FULL-
+  // retract before any XY, travel to the work origin, then start the spindle.
+  const firstTool = hasDrill ? DRILL : MAIN;
+  lines.push(`T${firstTool.n}`, "G17", "G20", "G90");
+  lines.push(`M6 T${firstTool.n} ( load ${firstTool.label} bit - BitSetter sets Z )`);
+  lines.push(`G0 Z${F(CAM.retractZ)}`); // always lift first - never start with an XY move
+  lines.push("G0 X0 Y0");
+  lines.push("M3 S18000 ( VFD spindle - this S word sets the RPM )");
+  lines.push("G4 P3 ( dwell - let the spindle reach speed before cutting )");
+  cur.z = CAM.retractZ; // machine is now retracted at the origin
 
   // ---- drilling first (the sheet is fully intact and rigid) -------------------
   for (const p of parts) {
@@ -138,6 +180,12 @@ export function camBoard(cab: Cabinet, boardIdx: number): CamJob {
       move(false, cur.x, cur.y, -hole.depth, CAM.plunge);
       move(true, cur.x, cur.y, CAM.safeZ); // full retract before moving on
     }
+  }
+
+  // ---- bit change: 1/4" drill -> 8mm cutter (only when this board drilled) ----
+  if (hasDrill) {
+    comment(`BIT CHANGE: swap the ${DRILL.label} drill for the ${MAIN.label} cutter (pockets + profiles)`);
+    changeBit(MAIN);
   }
 
   // ---- pockets next (parts still held by the full sheet) ----------------------
@@ -179,7 +227,8 @@ export function camBoard(cab: Cabinet, boardIdx: number): CamJob {
   // ---- outside profiles with holding tabs -------------------------------------
   for (const p of parts) {
     curPart = cab.parts.indexOf(p);
-    const { w, h, thick } = cutSize(p);
+    const { w, h } = cutSize(p);
+    const thick = cutThick(p); // through-cut to the real stock thickness
     const [x, y] = p.nest.at;
     {
       const total = thick + CAM.overcut;
@@ -242,10 +291,12 @@ export function camBoard(cab: Cabinet, boardIdx: number): CamJob {
     move(true, cur.x, cur.y, CAM.safeZ);
   }
 
-  // ---- end ----------------------------------------------------------------------
+  // ---- end (mirrors the Test G-code's tail) -----------------------------------
   curPart = undefined;
-  move(true, cur.x, cur.y, CAM.safeZ);
-  lines.push("M5", "G0 X0 Y0", "M2");
+  move(true, cur.x, cur.y, CAM.safeZ); // lift clear of the work
+  lines.push("M5"); // spindle off
+  lines.push(`G0 Z${F(CAM.retractZ)}`); // full retract
+  lines.push("G0 X0 Y0", "M2"); // home + end of program
 
   const minutes = Math.round(cutLen / CAM.feed + plungeLen / CAM.plunge + rapidLen / CAM.rapidRate);
   comment(`est. ${minutes} min (${Math.round(cutLen)}" of cutting)`);

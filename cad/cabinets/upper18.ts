@@ -18,22 +18,25 @@ import { BLEED, GAP, type Cabinet, type Hole, type Span } from "../model";
 // ---- cabinet spec (inches) --------------------------------------------------
 const W = 18; // overall width
 const H = 42; // overall height (top at ceiling)
-const PLY = 0.75; // 3/4" plywood carcass + face frame + door
-const BACK_T = 0.25; // 1/4" back, stapled over the back
+const PLY = 0.723; // MEASURED 3/4" ply thickness (real ~23/32") — carcass +
+//                    face frame + door; every thickness-derived size uses this
+const BACK_T = 0.220; // MEASURED 1/4" back (real ~0.220"), stapled over the back
 const FF_STILE_W = 1.5; // the frame's side borders (1x2 look)
 const FF_RAIL_W = 2.5; // the frame's top/bottom borders (1x3 look)
 const SIDE_D = 11.0; // side depth, so 1/4 + 11 + 3/4 = 12" overall
-const D = BACK_T + SIDE_D + PLY; // 12" -- includes the face frame
-const DOOR_T = 0.75;
+const D = BACK_T + SIDE_D + PLY; // ~11.97" -- includes the face frame
+const DOOR_T = PLY; // the door is the same 3/4" ply
 const TRIM_INSET = 2.0; // the door trim's borders (looks like 2" stiles/rails)
-const TRIM_T = 0.25; // 1/4" ply trim frame glued on the door face
+const TRIM_T = 0.220; // MEASURED 1/4" ply trim frame glued on the door face
 
 const zBACK: Span = [0, BACK_T];
 const zBOX: Span = [BACK_T, BACK_T + SIDE_D]; // 0.25 .. 11.25
 const zFF: Span = [BACK_T + SIDE_D, D]; // 11.25 .. 12
 const zDOOR: Span = [D, D + DOOR_T]; // 12 .. 12.75
 const zTRIM: Span = [zDOOR[1], zDOOR[1] + TRIM_T]; // 12.75 .. 13 — on the door face
-const innerX: Span = [PLY, W - PLY]; // between the sides: 16 1/2"
+const INNER_W = W - 2 * PLY; // clear width between the sides — recomputes from
+//                             PLY (16.554" at 0.723" ply; was 16.5" at nominal)
+const innerX: Span = [PLY, W - PLY]; // between the sides
 const doorX: Span = [0, W]; // FULL overlay — the door covers the whole face
 const doorY: Span = [0, H];
 
@@ -69,7 +72,7 @@ for (const u of [2, 9.25]) {
 export const upper18: Cabinet = {
   id: "upper18",
   name: 'Upper 18" (cnc)',
-  info: 'Upper 18" x 42" x 12" - 3/4" ply, one-piece face frame (15" x 37" window), full-thickness door + 1/4" trim frame',
+  info: 'Upper 18" x 42" x 11.94" - 0.723" ply, one-piece face frame (15" x 37" window), full-thickness door + 0.220" trim frame',
   layers: [
     { name: "BOX", color: "#dcc89c" },
     { name: "SUPPORTS", color: "#c9ab72" },
@@ -81,37 +84,37 @@ export const upper18: Cabinet = {
     { name: "DIMS", color: "#6b7280" },
   ],
   boards: [
-    { label: 'Board 1 - 3/4" ply', material: '3/4" ply', size: [48, 48] },
-    { label: 'Board 2 - 3/4" ply', material: '3/4" ply', size: [48, 48] },
-    { label: 'Board 3 - 1/4" ply', material: '1/4" ply', size: [48, 48] },
+    { label: 'Board 1 - 0.723" ply', material: '0.723" ply', size: [48, 48], cutThickness: 0.723 },
+    { label: 'Board 2 - 0.723" ply', material: '0.723" ply', size: [48, 48], cutThickness: 0.723 },
+    { label: 'Board 3 - 0.220" ply', material: '0.220" ply', size: [48, 48], cutThickness: 0.220 },
   ],
   parts: [
     // ---- box (3/4" ply). The top is flush with the top of the sides; the
     // bottom SITS ON the 1-1/2" bottom support, so it isn't flush underneath.
     // Both supports sit vertically against the BACK (they're the cleats you
     // screw through into the wall studs).
-    { label: 'SIDE - 11" x 42" (3/4" PLY)', layer: "BOX", explode: [-9, 0, 0],
+    { label: 'SIDE - 11" x 42" (0.723" PLY)', layer: "BOX", explode: [-9, 0, 0],
       box: { x: [0, PLY], y: [0, H], z: zBOX },
       holes: pinHoles, holesFace: "max", // pins open onto the inner (+x) face
       nest: { board: 0, at: [M, M] } },
-    { label: 'SIDE - 11" x 42" (3/4" PLY)', layer: "BOX", explode: [9, 0, 0],
+    { label: 'SIDE - 11" x 42" (0.723" PLY)', layer: "BOX", explode: [9, 0, 0],
       box: { x: [W - PLY, W], y: [0, H], z: zBOX },
       holes: pinHoles, holesFace: "min", // mirrored: inner face is -x
       nest: { board: 0, at: [X_SIDE_B, M] } },
     // top + bottom nest INSIDE the face frame's window, stood on end
-    { label: 'TOP - 16-1/2" x 11"', layer: "BOX", explode: [0, 9, 0],
+    { label: 'TOP - 16.554" x 11"', layer: "BOX", explode: [0, 9, 0],
       box: { x: innerX, y: [H - PLY, H], z: zBOX },
       nest: { board: 1, at: [X_IN_WIN, Y_IN_WIN] } },
-    { label: 'BOTTOM - 16-1/2" x 11"', layer: "BOX", explode: [0, -4.5, 0],
+    { label: 'BOTTOM - 16.554" x 11"', layer: "BOX", explode: [0, -4.5, 0],
       box: { x: innerX, y: [1.5, 1.5 + PLY], z: zBOX },
-      nest: { board: 1, at: [X_IN_WIN, Y_IN_WIN + 16.5 + G] } },
-    { label: 'ADJ SHELF - 16-1/2" x 10-1/4"', layer: "SHELF", explode: [0, 0, 2.5],
+      nest: { board: 1, at: [X_IN_WIN, Y_IN_WIN + INNER_W + G] } },
+    { label: 'ADJ SHELF - 16.554" x 10.25"', layer: "SHELF", explode: [0, 0, 2.5],
       box: { x: innerX, y: [21, 21 + PLY], z: [zBOX[0] + 0.25, zBOX[1] - 0.5] },
       nest: { board: 1, at: [X_STACK, M], longAxis: "x" } },
-    { label: 'TOP SUPPORT - 16-1/2" x 3-1/2"', layer: "SUPPORTS", explode: [0, 4.5, 0],
+    { label: 'TOP SUPPORT - 16.554" x 3.5"', layer: "SUPPORTS", explode: [0, 4.5, 0],
       box: { x: innerX, y: [H - PLY - 3.5, H - PLY], z: [zBOX[0], zBOX[0] + PLY] },
       nest: { board: 1, at: [X_STACK, M + 10.25 + G], longAxis: "x" } },
-    { label: 'BOTTOM SUPPORT - 16-1/2" x 1-1/2"', layer: "SUPPORTS", explode: [0, -8.5, 0],
+    { label: 'BOTTOM SUPPORT - 16.554" x 1.5"', layer: "SUPPORTS", explode: [0, -8.5, 0],
       box: { x: innerX, y: [0, 1.5], z: [zBOX[0], zBOX[0] + PLY] },
       nest: { board: 1, at: [X_STACK, M + 10.25 + G + 3.5 + G], longAxis: "x" } },
 
@@ -123,19 +126,19 @@ export const upper18: Cabinet = {
       nest: { board: 1, at: [M, M] } },
 
     // ---- door: ONE solid 3/4" piece; the CNC clears the center box
-    { label: 'DOOR - 18" x 42" (FULL OVERLAY, SOLID 3/4")', layer: "DOOR", explode: [0, 0, 17],
+    { label: 'DOOR - 18" x 42" (FULL OVERLAY, SOLID 0.723")', layer: "DOOR", explode: [0, 0, 17],
       box: { x: doorX, y: doorY, z: zDOOR },
       nest: { board: 0, at: [X_DOOR, M] } },
     // 1/4" trim frame glued around the door's face — the shaker profile is
     // ADDED instead of pocketed, so the door stays full 3/4" everywhere
-    { label: 'DOOR TRIM - 18" x 42" (1/4" PLY, 14" x 38" WINDOW)', layer: "DOOR", explode: [0, 0, 24],
+    { label: 'DOOR TRIM - 18" x 42" (0.220" PLY, 14" x 38" WINDOW)', layer: "DOOR", explode: [0, 0, 24],
       box: { x: doorX, y: doorY, z: zTRIM },
       cutout: { insetU: TRIM_INSET, insetV: TRIM_INSET },
       nest: { board: 2, at: [X_TRIM, M] } },
 
     // ---- back: 1/4" ply, stapled over the back (its own board -- thickness
     // can never mix with the 3/4" parts on one sheet)
-    { label: '1/4" BACK - 18" x 42" (STAPLED OVER)', layer: "BACK", explode: [0, 0, -9],
+    { label: '0.220" BACK - 18" x 42" (STAPLED OVER)', layer: "BACK", explode: [0, 0, -9],
       box: { x: [0, W], y: [0, H], z: zBACK },
       nest: { board: 2, at: [M, M] } },
   ],
@@ -147,7 +150,7 @@ export const upper18: Cabinet = {
   dims: [
     { a: [0, H, zDOOR[0]], b: [W, H, zDOOR[0]], off: [0, 4.2, 0], text: '18"' },
     { a: [0, 0, zDOOR[0]], b: [0, H, zDOOR[0]], off: [-2.4, 0, 0], text: '42"' },
-    { a: [W, H, 0], b: [W, H, D], off: [1.6, 1.6, 0], text: '12" incl. face frame' },
-    { a: [W, H, 0], b: [W, H, zTRIM[1]], off: [3.4, 3.4, 0], text: '13" incl. door + trim' },
+    { a: [W, H, 0], b: [W, H, D], off: [1.6, 1.6, 0], text: '11.94" incl. face frame' },
+    { a: [W, H, 0], b: [W, H, zTRIM[1]], off: [3.4, 3.4, 0], text: '12.89" incl. door + trim' },
   ],
 };

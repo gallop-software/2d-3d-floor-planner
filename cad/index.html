@@ -56,6 +56,30 @@
     <label class="explode" id="explodeWrap" hidden>Explode
       <input type="range" id="explode" min="0" max="100" value="0">
     </label>
+    <div class="sim" id="simBar" hidden>
+      <div class="sim-controls">
+        <button class="btn icon" id="simPrev" aria-label="Step back" title="Step back one move (hold to scan)">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 3h1.7v10H4zM13 3v10l-7-5z"/></svg>
+        </button>
+        <button class="btn icon" id="simPlay" aria-label="Play simulation" title="Play / pause the cut">
+          <svg id="simPlayIcon" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 3l9 5-9 5z"/></svg>
+        </button>
+        <button class="btn icon" id="simNext" aria-label="Step forward" title="Step forward one move (hold to scan)">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M10.3 3H12v10h-1.7zM3 3v10l7-5z"/></svg>
+        </button>
+        <input type="range" id="simScrub" min="0" max="1000" value="0" title="Scrub through the cut">
+        <select id="simSpeed" title="Playback speed">
+          <option value="0.25">0.25×</option>
+          <option value="0.5">0.5×</option>
+          <option value="1" selected>1×</option>
+          <option value="2">2×</option>
+          <option value="4">4×</option>
+          <option value="8">8×</option>
+        </select>
+        <span id="simTime">0%</span>
+      </div>
+      <span id="simStat"></span>
+    </div>
     <div id="drop">Drop .dxf to load</div>
   </div>
   <nav id="tabs" aria-label="Cabinet sheets"></nav>
