@@ -2,7 +2,7 @@
 // (its assembled 3D box + where it nests on a board); the 3D view renders the
 // boxes and the DXF cut files are generated from the same data at runtime.
 //
-// Target machine: BobsCNC KL744 (48 x 48 work area). Cut with a 1/4" bit.
+// Target machine: Shapeoko Pro 5 / Carbide Motion (48 x 48 work area). Cut with a 1/4" bit.
 // The DXF holds TRUE finished part outlines -- let your CAM apply the
 // bit-radius offset (outside profile); there is NO toolpath baked in.
 // POCKET_* layers are partial-depth clears (NOT through cuts) with the depth
@@ -14,11 +14,17 @@ export type Span = [number, number];
 export type XYZ = [number, number, number];
 
 // ---- CNC parameters ---------------------------------------------------------
-export const BIT_DIA = 0.25; // 1/4" router bit
-export const BLEED = 0.25; // unused margin kept clear of every board edge
+export const BIT_DIA = 8 / 25.4; // 8mm main cutting bit (~0.315") — profiles + pockets
+export const BIT_LABEL = "8mm"; // human label for the main bit (8mm is ugly as inches)
+export const DRILL_DIA = 0.25; // 1/4" bit, used ONLY for the shelf-pin holes (a 1/4"
+//                                hole needs a 1/4" bit — the 8mm cutter can't make it)
+export const DRILL_LABEL = '1/4"';
+export const BLEED = 0.75; // margin kept clear of every board edge — wide enough
+//                            that holding tabs on edge-nested parts anchor into
+//                            solid waste (was 0.25", too thin to hold a tab)
 export const GAP = 1.0; // space between parts: cutting the OUTSIDE of each
 //                         part eats BIT_DIA off each side, so this leaves
-//                         ~GAP - 2*BIT_DIA = 1/2" of solid meat between cuts.
+//                         ~GAP - 2*BIT_DIA of solid meat between cuts.
 
 export interface PartBox { x: Span; y: Span; z: Span }
 
@@ -66,6 +72,10 @@ export interface Board {
   label: string; // tab label, e.g. 'Board 1 — 3/4" ply'
   material: string; // thickness note; parts of one thickness per board
   size: [number, number]; // work area, inches (4x4 = [48, 48])
+  cutThickness?: number; // ACTUAL measured stock thickness, for through-cut
+  //   DEPTH only — overrides the nominal modeled thickness so real undersized
+  //   sheet goods cut all the way through without grinding the spoilboard.
+  //   The 3D model + part sizes still use the nominal thickness.
 }
 
 export interface DimSpec { a: XYZ; b: XYZ; off: XYZ; text: string }
@@ -145,8 +155,8 @@ export function validateNest(cab: Cabinet): string[] {
         }
       }
       for (const hole of p.holes ?? []) {
-        if (Math.abs(hole.dia - BIT_DIA) > 1e-9) {
-          errs.push(`${cab.id} ${board.label}: "${p.label}" hole dia ${hole.dia}" != bit ${BIT_DIA}" (only plunge-drilling is supported)`);
+        if (Math.abs(hole.dia - DRILL_DIA) > 1e-9) {
+          errs.push(`${cab.id} ${board.label}: "${p.label}" hole dia ${hole.dia}" != drill bit ${DRILL_DIA}" (only plunge-drilling is supported)`);
         }
         const [hx, hy] = holeXY(p, hole);
         if (hx < hole.dia / 2 || hx > w - hole.dia / 2 ||

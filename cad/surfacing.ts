@@ -1,6 +1,6 @@
 import type { CamJob, ToolpathSeg } from "./gcode";
 
-// Wasteboard surfacing for the BobsCNC KL744: flatten the spoilboard with a
+// Wasteboard surfacing for the Shapeoko Pro 5 / Carbide Motion: flatten the spoilboard with a
 // large surfacing bit. NOT a cabinet — no parts, no 3D — just one G-code
 // program in the dropdown.
 //
@@ -11,13 +11,14 @@ import type { CamJob, ToolpathSeg } from "./gcode";
 
 export const SURF = {
   bitDia: 2.0, // surfacing / fly cutter
-  area: [48, 48] as [number, number], // the KL744 work area to flatten
+  area: [48, 48] as [number, number], // the Shapeoko Pro 5 work area to flatten
   stepover: 1.5, // 75% of the bit — no ridges between lanes
   passDepth: 0.02, // VERY shallow — gentle on any high spot
   totalDepth: 0.04, // total material removed (2 passes); raise if it doesn't clean up
   feed: 60, // in/min
   plunge: 10, // in/min — big bit, gentle entry
-  safeZ: 0.75,
+  safeZ: 1.0, // travel height between passes (1" reads distinct from cut depth)
+  retractZ: 3.0, // full retract at job start + end (Shapeoko lead-in/out)
 };
 
 const F = (v: number) => v.toFixed(4).replace(/0+$/, "0");
@@ -51,14 +52,19 @@ export function surfacingJob(): CamJob {
 
   const passes = Math.max(1, Math.round(SURF.totalDepth / SURF.passDepth));
   comment(`WASTEBOARD SURFACING - ${F(w)} x ${F(h)} area - generated from cad/surfacing.ts`);
-  comment(`BobsCNC KL744 / GRBL - inches - ${F(SURF.bitDia)}" SURFACING BIT`);
+  comment(`Shapeoko Pro 5 / Carbide Motion (GRBL) - inches - ${F(SURF.bitDia)}" SURFACING BIT`);
+  comment(`load the bit when prompted - the BitSetter sets Z on the M6 tool change`);
   comment(`zero Z on the HIGHEST point of the wasteboard - X0 Y0 at front-left of the area`);
   comment(`${F(SURF.passDepth)}"/pass x ${passes} passes = ${F(SURF.totalDepth)}" total - shallow so high spots don't slam the bit`);
   comment(`feed ${SURF.feed} ipm - stepover ${F(SURF.stepover)}" [75% of the bit]`);
-  lines.push("G20 G90 G94", "G17");
-  lines.push("M3 S12000 ( surfacing bit - run the router SLOW )");
-  // ALWAYS lift first: the machine's Z is wherever the operator left it
-  lines.push(`G0 Z${F(SURF.safeZ)}`);
+  // Shapeoko / Carbide Motion lead-in (mirrors the Test G-code's start)
+  lines.push("T1", "G17", "G20", "G90");
+  lines.push("M6 T1 ( tool change - BitSetter sets Z )");
+  lines.push(`G0 Z${F(SURF.retractZ)}`); // always lift first - never start with an XY move
+  lines.push("G0 X0 Y0");
+  lines.push('M3 S12000 ( VFD spindle - S sets RPM; slow for the 2" bit )');
+  lines.push("G4 P3 ( dwell - let the spindle reach speed before cutting )");
+  cur.z = SURF.retractZ; // machine is now retracted at the origin
 
   for (let pi = 1; pi <= passes; pi++) {
     const z = -((SURF.totalDepth * pi) / passes);
@@ -86,8 +92,10 @@ export function surfacingJob(): CamJob {
     move(true, cur.x, cur.y, SURF.safeZ);
   }
 
-  move(true, cur.x, cur.y, SURF.safeZ);
-  lines.push("M5", "G0 X0 Y0", "M2");
+  move(true, cur.x, cur.y, SURF.safeZ); // lift clear
+  lines.push("M5"); // spindle off
+  lines.push(`G0 Z${F(SURF.retractZ)}`); // full retract
+  lines.push("G0 X0 Y0", "M2"); // home + end of program
 
   const minutes = Math.round(cutLen / SURF.feed + plungeLen / SURF.plunge + rapidLen / 150);
   comment(`est. ${minutes} min [${Math.round(cutLen)}" of surfacing]`);

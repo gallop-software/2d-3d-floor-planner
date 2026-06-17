@@ -71,7 +71,8 @@ truth the page derives everything; don't hand-edit downstream output:
 
 Worked examples: `upper18` (CNC face-frame upper, 48×48 boards) and `upper18saw` (same cabinet as
 straight saw cuts, 4×8 sheets). To add a cabinet, write a new `cad/cabinets/*.ts` and register it in
-`cad/main.ts`. Target machine for the output is a BobsCNC KL744 with a 1/4" bit; DXF holds true
+`cad/main.ts`. Target machine for the output is a Shapeoko Pro 5 / Carbide Motion (8mm main bit +
+1/4" drill for shelf-pin holes); DXF holds true
 finished outlines (let CAM apply the bit offset). **Always run `npm run audit:gcode` after CAD edits.**
 
 ## Guardrails / commands

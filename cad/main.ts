@@ -1,11 +1,15 @@
 /// <reference types="vite/client" />
 import "./viewer.css";
-import { BIT_DIA, BLEED, boardShapes, boardToDXF, frac, validateNest, type Cabinet } from "./model";
+import { BIT_LABEL, BLEED, boardShapes, boardToDXF, validateNest, type Cabinet } from "./model";
 import { CAM, camBoard, type CamJob } from "./gcode";
 import { createCabinet3D, type Cabinet3D } from "./view3d";
+import { createToolpath3D, parseToolpath, type Toolpath, type Toolpath3D, type SimStatus, type ToolpathCanvas } from "./toolpath3d";
 import { SURF, surfacingJob } from "./surfacing";
 import { upper18 } from "./cabinets/upper18";
 import { upper18saw } from "./cabinets/upper18saw";
+// External G-code, imported RAW so it is preserved byte-for-byte — we parse a
+// copy of this string for the 3D drawing and hand the original back to download.
+import testGcodeRaw from "./programs/test-gcode-for-chris.gcode?raw";
 
 // ---------- entity types ----------------------------------------------------
 type Pt = [number, number];
@@ -413,6 +417,7 @@ canvas.addEventListener("touchend", (e) => {
 // ---------- loading ----------------------------------------------------------
 function loadEntities(ents: Entity[]) {
   hide3D(); // any 2D content (DXF or toolpath) lands in 2D mode
+  setSim3D(null); // leaving the 3D toolpath tab — stop & hide playback
   selectedParts.clear();
   entities = ents;
   buildLegend();
@@ -524,21 +529,59 @@ const PROGRAMS: Program[] = [{
   job: surfacingJob,
 }];
 
-type Item = Cabinet | Program;
-const ITEMS: Item[] = [...CABINETS, ...PROGRAMS];
+// A standalone 3D TOOLPATH view of an EXTERNAL G-code file. The file is the
+// deliverable and is kept byte-for-byte intact: `gcode` is the raw text (used
+// verbatim for download), `toolpath` is a parsed copy used only to draw it.
+interface GcodeView {
+  gcodeView: true;
+  id: string;
+  name: string;
+  info: string;
+  filename: string; // download name (the original file name)
+  gcode: string; // the original file text, verbatim
+  toolpath: Toolpath; // parsed copy, for the 3D drawing only
+  canvas: ToolpathCanvas; // the stock sheet drawn under the cuts (2D + 3D)
+}
+// the external file doesn't state its stock size, so we draw it on a 4x4 sheet
+function makeGcodeView(id: string, name: string, filename: string, raw: string,
+  canvas: ToolpathCanvas = { x: [0, 48], y: [0, 48] }): GcodeView {
+  const toolpath = parseToolpath(raw);
+  const { stats, bounds } = toolpath;
+  const w = bounds.maxx - bounds.minx, h = bounds.maxy - bounds.miny;
+  const info = `${name} — external G-code, kept byte-for-byte intact. ` +
+    `Toolpath ${w.toFixed(1)}" x ${h.toFixed(1)}", ${stats.depth.toFixed(3)}" deep in ` +
+    `${stats.passes} ${stats.passes === 1 ? "pass" : "passes"} — ~${stats.minutes} min, ` +
+    `${stats.lines} lines. Drag to orbit; download hands back the original file.`;
+  return { gcodeView: true, id, name, info, filename, gcode: raw, toolpath, canvas };
+}
+const GVIEWS: GcodeView[] = [
+  makeGcodeView("test-gcode", 'Test G-code (3D toolpath)', "Test Gcode for Chris.gcode", testGcodeRaw),
+];
+
+type Item = Cabinet | Program | GcodeView;
+// order in the dropdown: cabinets, then the G-code views (so this one sits
+// directly under 'Upper 18" (circular saw)'), then standalone programs
+const ITEMS: Item[] = [...CABINETS, ...GVIEWS, ...PROGRAMS];
 const isProgram = (i: Item): i is Program => "program" in i;
+const isGcodeView = (i: Item): i is GcodeView => "gcodeView" in i;
 
 type Sheet =
   | { label: string; kind: "3d" }
-  | { label: string; kind: "dxf" | "gcode"; board: number }
-  | { label: string; kind: "prog" };
+  | { label: string; kind: "dxf" | "gcode" | "camsim3d"; board: number }
+  | { label: string; kind: "prog" }
+  | { label: string; kind: "gview3d" | "gview2d" };
 
 function sheetsOf(item: Item): Sheet[] {
+  if (isGcodeView(item)) return [
+    { label: "3D Toolpath", kind: "gview3d" },
+    { label: "G-code", kind: "gview2d" },
+  ];
   if (isProgram(item)) return [{ label: "Surfacing G-code", kind: "prog" }];
   return [
     { label: "3D", kind: "3d" },
     ...item.boards.flatMap((b, i): Sheet[] => [
       { label: b.label, kind: "dxf", board: i },
+      { label: `${b.label.split(" - ")[0]} Sim`, kind: "camsim3d", board: i },
       { label: `${b.label.split(" - ")[0]} G-code`, kind: "gcode", board: i },
     ]),
   ];
@@ -557,6 +600,16 @@ function programJob(p: Program): CamJob {
   let job = camCache.get(p.id);
   if (!job) { job = p.job(); camCache.set(p.id, job); }
   return job;
+}
+
+// the board's CAM G-code, parsed into a toolpath for the 3D "Sim" tab — same
+// playback view the external G-code uses, just fed our own generated program
+const camTpCache = new Map<string, Toolpath>();
+function camToolpath(cab: Cabinet, bi: number): Toolpath {
+  const key = `${cab.id}/${bi}`;
+  let tp = camTpCache.get(key);
+  if (!tp) { tp = parseToolpath(camJob(cab, bi).gcode); camTpCache.set(key, tp); }
+  return tp;
 }
 
 const rectPts = (x: number, y: number, w: number, h: number): Pt[] =>
@@ -634,6 +687,35 @@ function programEntities(prog: Program): Entity[] {
   }
   return ents;
 }
+// 2D top-down toolpath of an external G-code file — the SAME view as a
+// cabinet's "G-code" cut sheet (depth-shaded cuts, dashed rapids, plunge
+// circles, the grid + layer legend), built from the parsed copy.
+function gcodeViewEntities(gv: GcodeView): Entity[] {
+  const { moves, stats } = gv.toolpath;
+  const depthCol = (z: number) => {
+    const t = stats.depth > 0 ? Math.min(1, Math.max(0, -z / stats.depth)) : 0;
+    return `hsl(${Math.round(120 - 120 * t)},70%,55%)`;
+  };
+  const [sx0, sx1] = gv.canvas.x, [sy0, sy1] = gv.canvas.y; // full sheet outline
+  const ents: Entity[] = [
+    { type: "POLY", layer: "SHEET", closed: true, pts: rectPts(sx0, sy0, sx1 - sx0, sy1 - sy0) },
+  ];
+  // top-down has no depth ordering, so draw DEEPEST cuts first — shallower
+  // (greener) passes land on top, agreeing with the 3D view's shading
+  const cuts = moves.filter((m) => !m.rapid && !m.plunge
+    && (Math.abs(m.x1 - m.x0) > 1e-9 || Math.abs(m.y1 - m.y0) > 1e-9));
+  cuts.sort((a, b) => Math.min(a.z0, a.z1) - Math.min(b.z0, b.z1));
+  for (const mv of cuts) {
+    ents.push({ type: "LINE", layer: "CUTS", pts: [[mv.x0, mv.y0], [mv.x1, mv.y1]],
+      color: depthCol(Math.min(mv.z0, mv.z1)) });
+  }
+  for (const mv of moves) {
+    if (mv.rapid) ents.push({ type: "LINE", layer: "RAPIDS", dash: true, pts: [[mv.x0, mv.y0], [mv.x1, mv.y1]] });
+    else if (mv.plunge) ents.push({ type: "CIRCLE", layer: "PLUNGES", cx: mv.x1, cy: mv.y1, r: 0.06 });
+  }
+  return ents;
+}
+
 CABINETS.forEach((c) => {
   const errs = validateNest(c);
   if (errs.length) {
@@ -649,6 +731,15 @@ let current3D: Cabinet3D | null = null;
 const views = new Map<string, Cabinet3D>();
 const explodeWrap = $<HTMLElement>("explodeWrap");
 const explodeSlider = $<HTMLInputElement>("explode");
+const simBar = $<HTMLElement>("simBar");
+const simPlay = $<HTMLButtonElement>("simPlay");
+const simPrev = $<HTMLButtonElement>("simPrev");
+const simNext = $<HTMLButtonElement>("simNext");
+const simPlayIcon = $<HTMLElement>("simPlayIcon");
+const simScrub = $<HTMLInputElement>("simScrub");
+const simSpeed = $<HTMLSelectElement>("simSpeed");
+const simTimeEl = $<HTMLElement>("simTime");
+const simStatEl = $<HTMLElement>("simStat");
 const dlBtn = $<HTMLButtonElement>("dl");
 const dlLabel = $<HTMLElement>("dlLabel");
 const tabsEl = $<HTMLElement>("tabs");
@@ -678,20 +769,28 @@ document.addEventListener("click", () => { infoPop.hidden = true; });
 explodeSlider.addEventListener("input", () =>
   current3D?.setExplode(Number(explodeSlider.value) / 100));
 
-function show3D(cab: Cabinet) {
-  let v = views.get(cab.id);
-  if (!v) { v = createCabinet3D(cab, $<HTMLElement>("wrap")); views.set(cab.id, v); }
+// Show a 3D view (cabinet OR toolpath). Both implement Cabinet3D, so the same
+// machinery — caching, legend, fit/reset — drives either. `withExplode` gates
+// the explode slider, which only makes sense for an assembled cabinet.
+function showView3D(id: string, make: () => Cabinet3D, info: string, withExplode: boolean): Cabinet3D {
+  let v = views.get(id);
+  if (!v) { v = make(); views.set(id, v); }
   if (current3D && current3D !== v) current3D.hide();
   current3D = v;
   in3D = true;
   canvas.style.display = "none";
   readout.style.display = "none";
-  explodeWrap.hidden = false;
+  explodeWrap.hidden = !withExplode;
   v.layers.forEach((l) => v!.setLayerVisible(l.name, true)); // match the fresh legend
   buildLegend3D(v);
-  v.setExplode(Number(explodeSlider.value) / 100);
+  if (withExplode) v.setExplode(Number(explodeSlider.value) / 100);
   v.show();
-  setInfo(cab.info);
+  setInfo(info);
+  return v;
+}
+
+function show3D(cab: Cabinet) {
+  showView3D(cab.id, () => createCabinet3D(cab, $<HTMLElement>("wrap")), cab.info, true);
 }
 
 function hide3D() {
@@ -703,6 +802,89 @@ function hide3D() {
   explodeWrap.hidden = true;
   resize(); // the 2D canvas was 0-sized while hidden
 }
+
+// ---- 3D toolpath playback (Play / scrub / speed) ---------------------------
+// Drives the active toolpath view's setSim(0..1). simT is the fraction of the
+// run revealed; at rest it sits at 1 (whole path shown) and Play restarts it.
+const PLAY_ICON = '<path d="M4 3l9 5-9 5z"/>';
+const PAUSE_ICON = '<path d="M4 3h3v10H4zM9 3h3v10H9z"/>';
+const FULL_PLAY_SEC = 16; // wall-clock seconds to play the whole path at 1x
+let sim3d: Toolpath3D | null = null;
+let simT = 1;
+let simPlaying = false;
+let simRaf = 0;
+let simLastTs = 0;
+
+function fmtSimStatus(st: SimStatus | undefined): string {
+  if (!st || st.phase === "idle") return "";
+  // signed Z always shown: +above the stock (travel/retract), -cutting into it
+  const z = `Z ${st.z >= 0 ? "+" : ""}${st.z.toFixed(3)}"`;
+  const bit = st.tool ? `${st.tool} · ` : ""; // active bit, shown throughout
+  if (st.phase === "start") return `START · ${bit}${z}`;
+  if (st.phase === "toolchange") return `TOOL CHANGE → load ${st.tool} bit · retract ${z}`;
+  if (st.phase === "end") return `END · ${bit}parked at home · ${z} (retracted)`;
+  const label = st.phase === "rapid" ? "RAPID" : st.phase === "plunge" ? "PLUNGE" : "CUT";
+  const rate = st.feed > 0 ? `${st.feed} ipm` : "rapid travel";
+  return `${bit}${label} · ${z} · ${rate}`;
+}
+function applySim() {
+  const st = sim3d?.setSim(simT);
+  simScrub.value = String(Math.round(simT * 1000));
+  simTimeEl.textContent = `${Math.round(simT * 100)}%`;
+  simStatEl.textContent = fmtSimStatus(st);
+}
+function setSimPlaying(on: boolean) {
+  if (on && !sim3d) return;
+  if (on && simT >= 1) simT = 0; // finished/at-rest -> restart from the top
+  simPlaying = on;
+  simPlayIcon.innerHTML = on ? PAUSE_ICON : PLAY_ICON;
+  simPlay.setAttribute("aria-label", on ? "Pause simulation" : "Play simulation");
+  if (on) { simLastTs = 0; simRaf = requestAnimationFrame(simTick); }
+  else if (simRaf) { cancelAnimationFrame(simRaf); simRaf = 0; }
+}
+function simTick(ts: number) {
+  const dt = simLastTs ? (ts - simLastTs) / 1000 : 0;
+  simLastTs = ts;
+  simT = Math.min(1, simT + (dt * Number(simSpeed.value)) / FULL_PLAY_SEC);
+  applySim();
+  if (simT >= 1) { setSimPlaying(false); return; }
+  if (simPlaying) simRaf = requestAnimationFrame(simTick);
+}
+// Attach playback to a toolpath view (or null to hide + stop). Resets to the
+// full path at rest, so the tab opens looking complete; Play restarts it.
+function setSim3D(view: Toolpath3D | null) {
+  setSimPlaying(false);
+  sim3d = view;
+  simBar.hidden = !view;
+  if (view) { simT = 1; applySim(); }
+}
+simPlay.addEventListener("click", () => setSimPlaying(!simPlaying));
+simScrub.addEventListener("input", () => {
+  setSimPlaying(false);
+  simT = Number(simScrub.value) / 1000;
+  applySim();
+});
+
+// step one toolpath move at a time (stepping pauses playback)
+function simStep(dir: 1 | -1) {
+  if (!sim3d) return;
+  setSimPlaying(false);
+  simT = sim3d.stepSim(simT, dir);
+  applySim();
+}
+// press = one step; press-and-hold = scan continuously (350ms delay, then ~14/s)
+function holdToRepeat(btn: HTMLButtonElement, fn: () => void) {
+  let delay: ReturnType<typeof setTimeout>, repeat: ReturnType<typeof setInterval>;
+  const stop = () => { clearTimeout(delay); clearInterval(repeat); };
+  btn.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    fn();
+    delay = setTimeout(() => { repeat = setInterval(fn, 70); }, 350);
+  });
+  ["pointerup", "pointerleave", "pointercancel"].forEach((ev) => btn.addEventListener(ev, stop));
+}
+holdToRepeat(simPrev, () => simStep(-1));
+holdToRepeat(simNext, () => simStep(1));
 
 const cabSel = $<HTMLSelectElement>("page");
 ITEMS.forEach((c, idx) => {
@@ -736,8 +918,29 @@ function goTo(ci: number, si: number) {
   markActiveTab();
   const sheet = sheets[si];
   dlBtn.hidden = sheet.kind === "3d";
+  setSim3D(null); // playback bar is only for the 3D toolpath tab (below)
   if (sheet.kind === "3d") {
     show3D(item as Cabinet);
+  } else if (sheet.kind === "gview3d") {
+    const gv = item as GcodeView;
+    dlLabel.textContent = "Download G-code";
+    const v = showView3D(gv.id, () => createToolpath3D(gv.toolpath, $<HTMLElement>("wrap"), gv.canvas), gv.info, false);
+    setSim3D(v as Toolpath3D);
+  } else if (sheet.kind === "gview2d") {
+    const gv = item as GcodeView;
+    dlLabel.textContent = "Download G-code";
+    loadEntities(gcodeViewEntities(gv));
+    setInfo(gv.info);
+  } else if (sheet.kind === "camsim3d") {
+    const cab = item as Cabinet;
+    dlLabel.textContent = "Download G-code";
+    const job = camJob(cab, sheet.board);
+    const [bw, bh] = cab.boards[sheet.board].size; // show the full sheet as the canvas
+    const v = showView3D(`${cab.id}-cam3d-${sheet.board}`,
+      () => createToolpath3D(camToolpath(cab, sheet.board), $<HTMLElement>("wrap"), { x: [0, bw], y: [0, bh] }),
+      `${cab.name} — ${cab.boards[sheet.board].label} — 3D cut animation, ~${job.stats.minutes} min @ ${CAM.feed} ipm — press play`,
+      false);
+    setSim3D(v as Toolpath3D);
   } else if (sheet.kind === "prog") {
     const prog = item as Program;
     dlLabel.textContent = "Download G-code";
@@ -748,13 +951,13 @@ function goTo(ci: number, si: number) {
     const cab = item as Cabinet;
     dlLabel.textContent = "Download DXF";
     loadEntities(boardEntities(cab, sheet.board));
-    setInfo(`${cab.name} — ${sheet.label} — ${frac(BIT_DIA)} bit — click a part to label it`);
+    setInfo(`${cab.name} — ${sheet.label} — ${BIT_LABEL} bit — click a part to label it`);
   } else {
     const cab = item as Cabinet;
     dlLabel.textContent = "Download G-code";
     const job = camJob(cab, sheet.board);
     loadEntities(toolpathEntities(cab, sheet.board));
-    setInfo(`${cab.name} — ${sheet.label} — ${frac(BIT_DIA)} bit, ~${job.stats.minutes} min @ ${CAM.feed} ipm, ${job.stats.lines} lines — click a part to label it`);
+    setInfo(`${cab.name} — ${sheet.label} — ${BIT_LABEL} bit, ~${job.stats.minutes} min @ ${CAM.feed} ipm, ${job.stats.lines} lines — click a part to label it`);
   }
   history.replaceState(null, "", `?cab=${encodeURIComponent(item.id)}&sheet=${si}`);
 }
@@ -770,7 +973,9 @@ dlBtn.addEventListener("click", () => {
   const item = ITEMS[cabIdx];
   const sheet = sheetsOf(item)[sheetIdx];
   if (!sheet || sheet.kind === "3d") return;
-  const file = sheet.kind === "prog"
+  const file = isGcodeView(item)
+    ? { text: item.gcode, name: item.filename, mime: "text/plain" }
+    : sheet.kind === "prog"
     ? { text: programJob(item as Program).gcode, name: (item as Program).filename, mime: "text/plain" }
     : sheet.kind === "dxf"
       ? { text: boardToDXF(item as Cabinet, sheet.board), name: `${item.id}_board${sheet.board + 1}.dxf`, mime: "application/dxf" }

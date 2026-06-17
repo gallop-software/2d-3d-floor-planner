@@ -42,6 +42,23 @@ canvas { display:block; width:100%; height:100%; touch-action:none; }
 .explode input { width:130px; accent-color:var(--accent); }
 /* small tablets + phones: keep it visible, centered along the bottom */
 @media (max-width: 768px) { .explode { right:auto; left:50%; transform:translateX(-50%); } }
+/* playback bar for the 3D toolpath sim (Play, scrubber, speed, progress) */
+/* always stacked: controls on top, description centered below (like mobile) */
+.sim { position:absolute; left:50%; bottom:12px; transform:translateX(-50%); z-index:6; display:flex; flex-direction:column; align-items:stretch; gap:6px; max-width:calc(100vw - 24px); background:rgba(20,22,26,.82); padding:6px 12px; border-radius:10px; border:1px solid var(--line); }
+.sim[hidden] { display:none; }
+.sim-controls { display:flex; align-items:center; gap:10px; min-width:0; }
+.sim .btn.icon { width:30px; height:30px; padding:5px; flex:none; }
+.sim .btn.icon svg { width:16px; height:16px; }
+.sim input[type=range] { width:240px; min-width:0; accent-color:var(--accent); }
+.sim select { padding:3px 6px; font-size:0.8125rem; flex:none; }
+.sim #simTime { font-size:0.8125rem; color:var(--muted); min-width:34px; text-align:right; font-variant-numeric:tabular-nums; flex:none; }
+.sim #simStat { font-size:0.8125rem; color:var(--txt); white-space:normal; text-align:center; font-variant-numeric:tabular-nums; }
+.sim #simStat:empty { display:none; }
+/* phones: let the scrubber fill the row */
+@media (max-width: 768px) {
+  .sim-controls { gap:8px; }
+  .sim input[type=range] { width:auto; flex:1; }
+}
 .view3d { position:absolute; inset:0; display:none; background:#fff; }
 .view3d.on { display:block; }
 .view3d canvas { touch-action:none; }

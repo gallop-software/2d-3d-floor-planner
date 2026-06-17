@@ -20,7 +20,7 @@ import { BLEED, type Cabinet, type Hole, type Span } from "../model";
 // TO ITS OWN LINE (one edge cut, the neighbor still has its own line + kerf
 // room). And at 2x the bit diameter, the same layout still machines safely
 // if you ever run the G-code sheets (toolpaths fill the lane without biting
-// neighbors; a 4x8 on the KL744 needs the extension kit).
+// neighbors; a 4x8 sheet exceeds the Shapeoko Pro 5 work area - cut it down first).
 
 // ---- cabinet spec (inches) — identical to upper18 ---------------------------
 const W = 18;
@@ -92,7 +92,7 @@ export const upper18saw: Cabinet = {
     { name: "DIMS", color: "#6b7280" },
   ],
   boards: [
-    { label: 'Board 1 - 3/4" ply 4x8', material: '3/4" ply', size: [48, 96] },
+    { label: 'Board 1 - 3/4" ply 4x8', material: '3/4" ply', size: [48, 96], cutThickness: 0.723 },
     { label: 'Board 2 - 1/4" ply 4x8', material: '1/4" ply', size: [48, 96] },
   ],
   parts: [
