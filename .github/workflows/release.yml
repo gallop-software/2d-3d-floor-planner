@@ -1,0 +1,95 @@
+# Release on version bump
+# When dev is pushed with a package.json version change, mirror dev -> main,
+# tag the release, and publish a GitHub Release with a downloadable zip.
+name: Release
+
+on:
+  push:
+    branches:
+      - dev
+
+jobs:
+  release:
+    # Only run in the canonical repo. Template/forked copies inherit this file
+    # but this guard makes every job a no-op there — no mirror, tags, or releases.
+    if: github.repository == 'gallop-software/2d-3d-floor-planner'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout dev branch
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+          fetch-depth: 0
+
+      - name: Check for version bump
+        id: version-check
+        run: |
+          CURRENT_VERSION=$(jq -r .version package.json)
+          echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+
+          # Get previous version from git history (commit before the current version bump)
+          PREV_VERSION=$(git log --format=%H -1 --skip=1 -G'"version":' -- package.json | xargs -I{} git show {}:package.json | jq -r .version)
+          echo "prev_version=$PREV_VERSION" >> $GITHUB_OUTPUT
+
+          if [ "$CURRENT_VERSION" == "$PREV_VERSION" ] || [ -z "$PREV_VERSION" ]; then
+            echo "No version bump detected (current: $CURRENT_VERSION, prev: $PREV_VERSION)"
+            echo "should_release=false" >> $GITHUB_OUTPUT
+          else
+            echo "Version bump detected: $PREV_VERSION -> $CURRENT_VERSION"
+            echo "should_release=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Get commit messages since last version bump
+        if: steps.version-check.outputs.should_release == 'true'
+        id: commits
+        run: |
+          # Find the previous version bump commit
+          PREV_BUMP=$(git log --format=%H -2 -G'"version":' -- package.json | tail -1)
+          if [ -z "$PREV_BUMP" ]; then
+            COMMITS=$(git log --oneline --no-decorate | head -20)
+          else
+            COMMITS=$(git log --oneline --no-decorate $PREV_BUMP..HEAD)
+          fi
+
+          echo "commits<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMITS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Update main to match dev
+        if: steps.version-check.outputs.should_release == 'true'
+        run: git push --force origin HEAD:main
+
+      - name: Create tag
+        if: steps.version-check.outputs.should_release == 'true'
+        run: |
+          VERSION="v${{ steps.version-check.outputs.current_version }}"
+          git tag -f "$VERSION"
+          git push --force origin "$VERSION"
+
+      - name: Create GitHub Release with zip
+        if: steps.version-check.outputs.should_release == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_NOTES: ${{ steps.commits.outputs.commits }}
+        run: |
+          VERSION="v${{ steps.version-check.outputs.current_version }}"
+          REPO_NAME="2d-3d-floor-planner"
+
+          # Build a zip that extracts to a top-level 2d-3d-floor-planner/ folder
+          mkdir -p "$REPO_NAME-folder/$REPO_NAME"
+          shopt -s dotglob nullglob
+          rsync -a --exclude='.git' --exclude='.github' --exclude='node_modules' --exclude="$REPO_NAME-folder" ./ "$REPO_NAME-folder/$REPO_NAME/"
+          shopt -u dotglob nullglob
+          (cd "$REPO_NAME-folder" && zip -r "../$REPO_NAME.zip" "$REPO_NAME")
+
+          # Delete existing release if present (for retries)
+          gh release delete "$VERSION" --yes 2>/dev/null || true
+
+          echo "$RELEASE_NOTES" > release-notes.txt
+
+          gh release create "$VERSION" \
+            --title "Release $VERSION" \
+            --notes-file release-notes.txt \
+            "$REPO_NAME.zip"

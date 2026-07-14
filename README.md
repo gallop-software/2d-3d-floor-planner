@@ -6,7 +6,7 @@ A best-in-class TypeScript boilerplate for designing interior floor plans with *
 
 **⚡ Demo:** [2d-3d-floor-planner.gallop.software](https://2d-3d-floor-planner.gallop.software)
 **🎨 Template:** [gallop.software/templates](https://gallop.software/templates)
-**📦 Repository:** [github.com/gallop-software/2d-3d-floor-planner-pro](https://github.com/gallop-software/2d-3d-floor-planner-pro)
+**📦 Repository:** [github.com/gallop-software/2d-3d-floor-planner](https://github.com/gallop-software/2d-3d-floor-planner)
 **🏷️ Category:** 2D/3D Floor Planner Boilerplate
 
 ---
